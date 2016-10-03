@@ -1,11 +1,26 @@
-package circuit
+package breaker
 
-import (
-	"fmt"
-	"sync"
-	"time"
-)
+func NewMap() Map {
+	return &simpleMap{
+		breakers: make(map[string]*Breaker),
+	}
+}
 
+func (m *simpleMap) Set(name string, cb *Breaker) {
+	m.mutex.Lock()
+	m.breakers[name] = cb
+	m.mutex.Unlock()
+}
+
+func (m *simpleMap) Get(name string) (*Breaker, bool) {
+	m.mutex.RLock()
+	cb, ok := m.breakers[name]
+	m.mutex.RUnlock()
+
+	return cb, ok
+}
+
+/*
 var defaultStatsPrefixf = "circuit.%s"
 
 // Statter interface provides a way to gather statistics from breakers
@@ -142,3 +157,4 @@ type noopStatter struct {
 func (*noopStatter) Counter(sampleRate float32, bucket string, n ...int)          {}
 func (*noopStatter) Timing(sampleRate float32, bucket string, d ...time.Duration) {}
 func (*noopStatter) Gauge(sampleRate float32, bucket string, value ...string)     {}
+*/

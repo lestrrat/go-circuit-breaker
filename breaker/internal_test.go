@@ -1,82 +1,57 @@
-package circuit
+package breaker
 
 import (
-	"fmt"
+	"context"
+	"errors"
 	"sync/atomic"
 	"testing"
 	"time"
 
 	"github.com/cenk/backoff"
 	"github.com/facebookgo/clock"
+	"github.com/stretchr/testify/assert"
 )
 
-func init() {
-	defaultInitialBackOffInterval = time.Millisecond
+func defaultBackOff(c Clock) backoff.BackOff {
+	bo := backoff.NewExponentialBackOff()
+	bo.InitialInterval = time.Millisecond
+	bo.Clock = c
+	bo.Reset()
+	return bo
 }
 
-func TestBreakerTripping(t *testing.T) {
-	cb := NewBreaker()
-
-	if cb.Tripped() {
-		t.Fatal("expected breaker to not be tripped")
+func newBreaker(options ...Option) *Breaker {
+	var c Clock
+	var bo backoff.BackOff
+	for _, option := range options {
+		switch option.Name() {
+		case "Clock":
+			c = option.Get().(Clock)
+		case "Backoff":
+			bo = option.Get().(backoff.BackOff)
+		}
 	}
 
-	cb.Trip()
-	if !cb.Tripped() {
-		t.Fatal("expected breaker to be tripped")
+	if c == nil {
+		c = SimpleClock()
+		options = append(options, WithClock(c))
 	}
 
-	cb.Reset()
-	if cb.Tripped() {
-		t.Fatal("expected breaker to have been reset")
-	}
-}
-
-func TestBreakerCounts(t *testing.T) {
-	cb := NewBreaker()
-
-	cb.Fail()
-	if failures := cb.Failures(); failures != 1 {
-		t.Fatalf("expected failure count to be 1, got %d", failures)
+	if bo == nil {
+		bo = defaultBackOff(c)
+		options = append(options, WithBackOff(bo))
 	}
 
-	cb.Fail()
-	if consecFailures := cb.ConsecFailures(); consecFailures != 2 {
-		t.Fatalf("expected 2 consecutive failures, got %d", consecFailures)
-	}
-
-	cb.Success()
-	if successes := cb.Successes(); successes != 1 {
-		t.Fatalf("expected success count to be 1, got %d", successes)
-	}
-	if consecFailures := cb.ConsecFailures(); consecFailures != 0 {
-		t.Fatalf("expected 0 consecutive failures, got %d", consecFailures)
-	}
-
-	cb.Reset()
-	if failures := cb.Failures(); failures != 0 {
-		t.Fatalf("expected failure count to be 0, got %d", failures)
-	}
-	if successes := cb.Successes(); successes != 0 {
-		t.Fatalf("expected success count to be 0, got %d", successes)
-	}
-	if consecFailures := cb.ConsecFailures(); consecFailures != 0 {
-		t.Fatalf("expected 0 consecutive failures, got %d", consecFailures)
-	}
-}
-
-func TestErrorRate(t *testing.T) {
-	cb := NewBreaker()
-	if er := cb.ErrorRate(); er != 0.0 {
-		t.Fatalf("expected breaker with no samples to have 0 error rate, got %f", er)
-	}
+	return New(options...)
 }
 
 func TestBreakerEvents(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
 	c := clock.NewMock()
-	cb := NewBreaker()
-	cb.Clock = c
-	events := cb.Subscribe()
+	cb := newBreaker(WithClock(c))
+	events := cb.Subscribe(ctx)
 
 	cb.Trip()
 	if e := <-events; e != BreakerTripped {
@@ -94,7 +69,7 @@ func TestBreakerEvents(t *testing.T) {
 		t.Fatalf("expected to receive a reset event, got %d", e)
 	}
 
-	cb.Fail()
+	cb.fail()
 	if e := <-events; e != BreakerFail {
 		t.Fatalf("expected to receive a fail event, got %d", e)
 	}
@@ -102,8 +77,7 @@ func TestBreakerEvents(t *testing.T) {
 
 func TestAddRemoveListener(t *testing.T) {
 	c := clock.NewMock()
-	cb := NewBreaker()
-	cb.Clock = c
+	cb := newBreaker(WithClock(c))
 	events := make(chan ListenerEvent, 100)
 	cb.AddListener(events)
 
@@ -123,7 +97,7 @@ func TestAddRemoveListener(t *testing.T) {
 		t.Fatalf("expected to receive a reset event, got %v", e)
 	}
 
-	cb.Fail()
+	cb.fail()
 	if e := <-events; e.Event != BreakerFail {
 		t.Fatalf("expected to receive a fail event, got %v", e)
 	}
@@ -140,8 +114,7 @@ func TestAddRemoveListener(t *testing.T) {
 
 func TestTrippableBreakerState(t *testing.T) {
 	c := clock.NewMock()
-	cb := NewBreaker()
-	cb.Clock = c
+	cb := newBreaker(WithClock(c))
 
 	if !cb.Ready() {
 		t.Fatal("expected breaker to be ready")
@@ -156,7 +129,7 @@ func TestTrippableBreakerState(t *testing.T) {
 		t.Fatal("expected breaker to be ready after reset timeout")
 	}
 
-	cb.Fail()
+	cb.fail()
 	c.Add(cb.nextBackOff + 1)
 	if !cb.Ready() {
 		t.Fatal("expected breaker to be ready after reset timeout, post failure")
@@ -165,8 +138,7 @@ func TestTrippableBreakerState(t *testing.T) {
 
 func TestTrippableBreakerManualBreak(t *testing.T) {
 	c := clock.NewMock()
-	cb := NewBreaker()
-	cb.Clock = c
+	cb := newBreaker(WithClock(c))
 	cb.Break()
 	c.Add(cb.nextBackOff + 1)
 
@@ -183,18 +155,18 @@ func TestTrippableBreakerManualBreak(t *testing.T) {
 }
 
 func TestThresholdBreaker(t *testing.T) {
-	cb := NewThresholdBreaker(2)
+	cb := newBreaker(WithTripper(ThresholdTripper(2)))
 
 	if cb.Tripped() {
 		t.Fatal("expected threshold breaker to be open")
 	}
 
-	cb.Fail()
+	cb.fail()
 	if cb.Tripped() {
 		t.Fatal("expected threshold breaker to still be open")
 	}
 
-	cb.Fail()
+	cb.fail()
 	if !cb.Tripped() {
 		t.Fatal("expected threshold breaker to be tripped")
 	}
@@ -209,31 +181,31 @@ func TestThresholdBreaker(t *testing.T) {
 }
 
 func TestConsecutiveBreaker(t *testing.T) {
-	cb := NewConsecutiveBreaker(3)
+	cb := newBreaker(WithTripper(ConsecutiveTripper(3)))
 
 	if cb.Tripped() {
 		t.Fatal("expected consecutive breaker to be open")
 	}
 
-	cb.Fail()
-	cb.Success()
-	cb.Fail()
-	cb.Fail()
+	cb.fail()
+	cb.success(cb.state())
+	cb.fail()
+	cb.fail()
 	if cb.Tripped() {
 		t.Fatal("expected consecutive breaker to be open")
 	}
-	cb.Fail()
+	cb.fail()
 	if !cb.Tripped() {
 		t.Fatal("expected consecutive breaker to be tripped")
 	}
 }
 
 func TestThresholdBreakerCalling(t *testing.T) {
-	circuit := func() error {
-		return fmt.Errorf("error")
-	}
+	circuit := CircuitFunc(func() error {
+		return errors.New("error")
+	})
 
-	cb := NewThresholdBreaker(2)
+	cb := newBreaker(WithTripper(ThresholdTripper(2)))
 
 	err := cb.Call(circuit, 0) // First failure
 	if err == nil {
@@ -255,32 +227,37 @@ func TestThresholdBreakerCalling(t *testing.T) {
 func TestThresholdBreakerResets(t *testing.T) {
 	called := 0
 	success := false
-	circuit := func() error {
+	circuit := CircuitFunc(func() error {
+		t.Logf("circuit called %d", called)
 		if called == 0 {
 			called++
-			return fmt.Errorf("error")
+			return errors.New("error")
 		}
 		success = true
+		t.Logf("circuit success")
 		return nil
-	}
+	})
 
 	c := clock.NewMock()
-	cb := NewThresholdBreaker(1)
-	cb.Clock = c
-	err := cb.Call(circuit, 0)
-	if err == nil {
-		t.Fatal("Expected cb to return an error")
+	cb := newBreaker(
+		WithClock(c),
+		WithTripper(ThresholdTripper(1)),
+	)
+
+	t.Logf("First call to circuit, should fail")
+	if !assert.Error(t, cb.Call(circuit, 0), "Expected cb to return an error") {
+		return
 	}
 
 	c.Add(cb.nextBackOff + 1)
 	for i := 0; i < 4; i++ {
-		err = cb.Call(circuit, 0)
-		if err != nil {
-			t.Fatal("Expected cb to be successful")
+		t.Logf("Attempting subsequent call %d, should succeed", i)
+		if !assert.NoError(t, cb.Call(circuit, 0), "Expected cb to be successful (#%d)", i) {
+			return
 		}
 
-		if !success {
-			t.Fatal("Expected cb to have been reset")
+		if !assert.True(t, success, "Expected cb to have been reset") {
+			return
 		}
 	}
 }
@@ -291,15 +268,17 @@ func TestTimeoutBreaker(t *testing.T) {
 	c := clock.NewMock()
 	called := int32(0)
 
-	circuit := func() error {
+	circuit := CircuitFunc(func() error {
 		wait <- struct{}{}
 		atomic.AddInt32(&called, 1)
 		<-wait
 		return nil
-	}
+	})
 
-	cb := NewThresholdBreaker(1)
-	cb.Clock = c
+	cb := newBreaker(
+		WithClock(c),
+		WithTripper(ThresholdTripper(1)),
+	)
 
 	errc := make(chan error)
 	go func() { errc <- cb.Call(circuit, time.Millisecond) }()
@@ -324,11 +303,11 @@ func TestTimeoutBreaker(t *testing.T) {
 }
 
 func TestRateBreakerTripping(t *testing.T) {
-	cb := NewRateBreaker(0.5, 4)
-	cb.Success()
-	cb.Success()
-	cb.Fail()
-	cb.Fail()
+	cb := newBreaker(WithTripper(RateTripper(0.5, 4)))
+	cb.success(cb.state())
+	cb.success(cb.state())
+	cb.fail()
+	cb.fail()
 
 	if !cb.Tripped() {
 		t.Fatal("expected rate breaker to be tripped")
@@ -340,8 +319,8 @@ func TestRateBreakerTripping(t *testing.T) {
 }
 
 func TestRateBreakerSampleSize(t *testing.T) {
-	cb := NewRateBreaker(0.5, 100)
-	cb.Fail()
+	cb := newBreaker(WithTripper(RateTripper(0.5, 100)))
+	cb.fail()
 
 	if cb.Tripped() {
 		t.Fatal("expected rate breaker to not be tripped yet")
@@ -349,22 +328,24 @@ func TestRateBreakerSampleSize(t *testing.T) {
 }
 
 func TestRateBreakerResets(t *testing.T) {
-	serviceError := fmt.Errorf("service error")
+	serviceError := errors.New("service error")
 
 	called := 0
 	success := false
-	circuit := func() error {
+	circuit := CircuitFunc(func() error {
 		if called < 4 {
 			called++
 			return serviceError
 		}
 		success = true
 		return nil
-	}
+	})
 
 	c := clock.NewMock()
-	cb := NewRateBreaker(0.5, 4)
-	cb.Clock = c
+	cb := newBreaker(
+		WithClock(c),
+		WithTripper(RateTripper(0.5, 4)),
+	)
 	var err error
 	for i := 0; i < 4; i++ {
 		err = cb.Call(circuit, 0)
@@ -394,21 +375,53 @@ func TestRateBreakerResets(t *testing.T) {
 }
 
 func TestNeverRetryAfterBackoffStops(t *testing.T) {
-	cb := NewBreakerWithOptions(&Options{
-		BackOff: &backoff.StopBackOff{},
-	})
-
+	cb := newBreaker(WithBackOff(&backoff.StopBackOff{}))
 	cb.Trip()
 
 	// circuit should be open and never retry again
 	// when nextBackoff is backoff.Stop
 	called := 0
-	cb.Call(func() error {
+	cb.Call(CircuitFunc(func() error {
 		called = 1
 		return nil
-	}, 0)
+	}), 0)
 
 	if called == 1 {
 		t.Fatal("Expected cb to never retry")
 	}
 }
+
+func TestBreakerCounts(t *testing.T) {
+	cb := newBreaker()
+
+	cb.fail()
+	if failures := cb.Failures(); failures != 1 {
+		t.Fatalf("expected failure count to be 1, got %d", failures)
+	}
+
+	cb.fail()
+	if consecFailures := cb.ConsecFailures(); consecFailures != 2 {
+		t.Fatalf("expected 2 consecutive failures, got %d", consecFailures)
+	}
+
+	cb.success(cb.state())
+	if successes := cb.Successes(); successes != 1 {
+		t.Fatalf("expected success count to be 1, got %d", successes)
+	}
+	if consecFailures := cb.ConsecFailures(); consecFailures != 0 {
+		t.Fatalf("expected 0 consecutive failures, got %d", consecFailures)
+	}
+
+	cb.Reset()
+	if failures := cb.Failures(); failures != 0 {
+		t.Fatalf("expected failure count to be 0, got %d", failures)
+	}
+	if successes := cb.Successes(); successes != 0 {
+		t.Fatalf("expected success count to be 0, got %d", successes)
+	}
+	if consecFailures := cb.ConsecFailures(); consecFailures != 0 {
+		t.Fatalf("expected 0 consecutive failures, got %d", consecFailures)
+	}
+}
+
+
