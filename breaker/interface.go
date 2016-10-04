@@ -81,8 +81,8 @@ type Tripper interface {
 // TripFunc is a type of Tripper that is represented by a function with no state
 type TripFunc func(Breaker) bool
 
-// Breaker is the base of a circuit breaker. It maintains failure and success
-// counters as well as the event subscribers.
+// Breaker describes the interface of a circuit breaker. It maintains
+// failure and success counters and state information
 type Breaker interface {
 	Break()
 	Call(Circuit, time.Duration) error
