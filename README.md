@@ -16,9 +16,9 @@ func main() {
     breaker.WithTripper(breaker.ThresholdTripper(10)),
   )
 
-  err := b.Call(breaker.CircuitFucn(func() error {
+  err := b.Call(breaker.CircuitFunc(func() error {
     ...
-  })
+  }))
   if err != nil {
     // either the `circuit` passed to Call() failed
     // or the call was made while the breaker was
