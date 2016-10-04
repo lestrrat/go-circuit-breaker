@@ -49,12 +49,14 @@ const (
 	BreakerReady
 )
 
-type state int
+// State describes the current state of the Breaker
+type State int
 
+// The various states that the Breaker can take
 const (
-	open state = iota
-	halfopen
-	closed
+	Open State = iota
+	Halfopen
+	Closed
 )
 
 var (
@@ -87,15 +89,16 @@ type Breaker interface {
 	ConsecFailures() int64
 	ErrorRate() float64
 	Failures() int64
-	Ready() (bool, state)
+	Ready() (bool, State)
 	Reset()
-	State() state
+	State() State
 	Successes() int64
 	Trip()
 	Tripped() bool
 }
 
-type EventSubscriber struct {
+// EventSubscription describes a subscription to an EventEmitter
+type EventSubscription struct {
 	C       chan BreakerEvent
 	emitter *eventEmitter
 }
@@ -107,7 +110,7 @@ type EventEmitter interface {
 	Emitting() chan struct{}
 	Emit(context.Context)
 	Events() chan BreakerEvent
-	Subscribe(context.Context) *EventSubscriber
+	Subscribe(context.Context) *EventSubscription
 }
 
 type eventEmitter struct {
@@ -115,7 +118,7 @@ type eventEmitter struct {
 	emitting    chan struct{}
 	events      chan BreakerEvent
 	mutex       sync.RWMutex
-	subscribers map[string]*EventSubscriber
+	subscribers map[string]*EventSubscription
 }
 
 type breaker struct {

@@ -29,13 +29,13 @@ import (
 	pdebug "github.com/lestrrat/go-pdebug"
 )
 
-func (s state) String() string {
+func (s State) String() string {
 	switch s {
-	case open:
+	case Open:
 		return "open"
-	case halfopen:
+	case Halfopen:
 		return "halfopen"
-	case closed:
+	case Closed:
 		return "closed"
 	}
 	return "(unknown:" + strconv.Itoa(int(s)) + ")"
@@ -195,13 +195,13 @@ func (cb *breaker) fail() {
 
 // success is used to indicate a success condition the Breaker should record. If
 // the success was triggered by a retry attempt, the breaker will be Reset().
-func (cb *breaker) success(st state) {
+func (cb *breaker) success(st State) {
 	cb.backoffLock.Lock()
 	cb.backoff.Reset()
 	cb.nextBackOff = cb.backoff.NextBackOff()
 	cb.backoffLock.Unlock()
 
-	if st == halfopen {
+	if st == Halfopen {
 		if pdebug.Enabled {
 			pdebug.Printf("Breaker is in halfopen state, calling Reset")
 		}
@@ -223,20 +223,20 @@ func (cb *breaker) ErrorRate() float64 {
 // the call for auto resetting. Note that this means that the method has
 // side effects. If you are only interested in querying for the current state,
 // you should use State()
-func (cb *breaker) Ready() (isReady bool, st state) {
+func (cb *breaker) Ready() (isReady bool, st State) {
 	if pdebug.Enabled {
 		g := pdebug.Marker("Breaker.Ready")
 		defer g.End()
 	}
 	st = cb.State()
 	switch st {
-	case halfopen:
+	case Halfopen:
 		if pdebug.Enabled {
 			pdebug.Printf("state is halfopen")
 		}
 		atomic.StoreInt64(&cb.halfOpens, 0)
 		fallthrough
-	case closed:
+	case Closed:
 		return true, st
 	}
 	return false, st
@@ -298,13 +298,13 @@ func (cb *breaker) Call(circuit Circuit, timeout time.Duration) (err error) {
 // closed - the circuit is in a reset state and is operational
 // open - the circuit is in a tripped state
 // halfopen - the circuit is in a tripped state but the reset timeout has passed
-func (cb *breaker) State() state {
+func (cb *breaker) State() State {
 	if tripped := cb.Tripped(); !tripped {
-		return closed
+		return Closed
 	}
 
 	if atomic.LoadInt32(&cb.broken) == 1 {
-		return open
+		return Open
 	}
 
 	last := atomic.LoadInt64(&cb.lastFailure)
@@ -325,11 +325,11 @@ func (cb *breaker) State() state {
 			if pdebug.Enabled {
 				pdebug.Printf("returning halfopen")
 			}
-			return halfopen
+			return Halfopen
 		}
 	}
 	if pdebug.Enabled {
 		pdebug.Printf("returning open")
 	}
-	return open
+	return Open
 }

@@ -8,12 +8,15 @@ import (
 	pdebug "github.com/lestrrat/go-pdebug"
 )
 
+// NewEventEmitter wraps Breaker and creates an EventEmitter
+// (which also satisfies the Breaker interface) that can
+// generate events.
 func NewEventEmitter(cb Breaker) EventEmitter {
 	return &eventEmitter{
 		breaker:     cb,
 		emitting:    make(chan struct{}),
 		events:      make(chan BreakerEvent),
-		subscribers: make(map[string]*EventSubscriber),
+		subscribers: make(map[string]*EventSubscription),
 	}
 }
 
@@ -48,10 +51,10 @@ func (e *eventEmitter) Failures() int64 {
 	return e.breaker.Failures()
 }
 
-func (e *eventEmitter) Ready() (bool, state) {
+func (e *eventEmitter) Ready() (bool, State) {
 	r, st := e.breaker.Ready()
 	switch st {
-	case halfopen:
+	case Halfopen:
 		defer emitEvent(e, BreakerReady)
 	}
 	return r, st
@@ -62,7 +65,7 @@ func (e *eventEmitter) Reset() {
 	e.breaker.Reset()
 }
 
-func (e *eventEmitter) State() state {
+func (e *eventEmitter) State() State {
 	return e.breaker.State()
 }
 
@@ -116,8 +119,8 @@ func (e *eventEmitter) Emit(ctx context.Context) {
 }
 
 // Subscribe starts a new subscription 
-func (e *eventEmitter) Subscribe(ctx context.Context) *EventSubscriber {
-	s := EventSubscriber{
+func (e *eventEmitter) Subscribe(ctx context.Context) *EventSubscription {
+	s := EventSubscription{
 		C:       make(chan BreakerEvent),
 		emitter: e,
 	}
@@ -127,12 +130,14 @@ func (e *eventEmitter) Subscribe(ctx context.Context) *EventSubscriber {
 	return &s
 }
 
-func (e *eventEmitter) remove(s *EventSubscriber) {
+func (e *eventEmitter) remove(s *EventSubscription) {
 	e.mutex.Lock()
 	delete(e.subscribers, fmt.Sprintf("%p", s))
 	e.mutex.Unlock()
 }
 
-func (s *EventSubscriber) Stop() {
+// Stop removes the subscription from the associated EventEmitter
+// and stops receiving events
+func (s *EventSubscription) Stop() {
 	s.emitter.remove(s)
 }
