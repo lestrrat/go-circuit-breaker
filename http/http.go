@@ -135,7 +135,7 @@ func (c *Client) PostForm(url string, data url.Values) (*http.Response, error) {
 	return ctx.Response, ctx.Error
 }
 
-func (c *Client) breakerLookup(val interface{}) *breaker.Breaker {
+func (c *Client) breakerLookup(val interface{}) breaker.Breaker {
 	return c.lookup.BreakerLookup(val)
 }
 

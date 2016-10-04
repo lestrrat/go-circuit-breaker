@@ -13,12 +13,12 @@ func NewPerHostLookup(hosts breaker.Map) *PerHostLookup {
 }
 
 const defaultBreakerName = "_default"
-func (l *PerHostLookup) BreakerLookup(v interface{}) *breaker.Breaker {
+func (l *PerHostLookup) BreakerLookup(v interface{}) breaker.Breaker {
 	rawURL := v.(string)
 	parsedURL, err := url.Parse(rawURL)
 	if err != nil {
-		breaker, _ := l.hosts.Get(defaultBreakerName)
-		return breaker
+		b, _ := l.hosts.Get(defaultBreakerName)
+		return b
 	}
 
 	host := parsedURL.Host

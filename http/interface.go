@@ -75,7 +75,7 @@ type postFormCtx struct {
 }
 
 type BreakerLookupper interface {
-	BreakerLookup(interface{}) *breaker.Breaker
+	BreakerLookup(interface{}) breaker.Breaker
 }
 
 type PerHostLookup struct {

@@ -156,11 +156,11 @@ type Option interface {
 
 // Map represents a map of breakers
 type Map interface {
-	Get(string) (*Breaker, bool)
-	Set(string, *Breaker)
+	Get(string) (Breaker, bool)
+	Set(string, Breaker)
 }
 
 type simpleMap struct {
 	mutex    sync.RWMutex
-	breakers map[string]*Breaker
+	breakers map[string]Breaker
 }
