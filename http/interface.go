@@ -1,6 +1,7 @@
 package http
 
 import (
+	"errors"
 	"io"
 	"net/http"
 	"net/url"
@@ -9,18 +10,25 @@ import (
 	"github.com/lestrrat/go-circuit-breaker/breaker"
 )
 
+var ErrBadStatus = errors.New("bad HTTP status")
+
 type Option interface {
 	Name() string
 	Get() interface{}
 }
 
+type HTTPClient interface {
+	Do(*http.Request) (*http.Response, error)
+	Get(string) (*http.Response, error)
+	Head(string) (*http.Response, error)
+	Post(string, string, io.Reader) (*http.Response, error)
+	PostForm(string, url.Values) (*http.Response, error)
+}
+
 // Client is a wrapper around http.Client that provides circuit breaker capabilities.
-//
-// By default, the client will use its defaultBreaker. A BreakerLookup function may be
-// provided to allow different breakers to be used based on the circumstance. See the
-// implementation of NewHostBasedHTTPClient for an example of this.
 type Client struct {
-	client *http.Client
+	client         HTTPClient
+	errOnBadStatus bool
 	// BreakerTripped func()
 	// BreakerReset   func()
 	// BreakerLookup  func(*HTTPClient, interface{}) *breaker.Breaker
@@ -30,36 +38,40 @@ type Client struct {
 }
 
 type doCtx struct {
-	Client   *http.Client
-	Error    error
-	Request  *http.Request
-	Response *http.Response
+	Client           HTTPClient
+	Error            error
+	ErrorOnBadStatus bool
+	Request          *http.Request
+	Response         *http.Response
 }
 
 type getCtx struct {
-	Client   *http.Client
-	Error    error
-	URL      string
-	Response *http.Response
+	Client           HTTPClient
+	Error            error
+	ErrorOnBadStatus bool
+	URL              string
+	Response         *http.Response
 }
 
 type headCtx getCtx
 
 type postCtx struct {
-	Body     io.Reader
-	BodyType string
-	Client   *http.Client
-	Error    error
-	URL      string
-	Response *http.Response
+	Body             io.Reader
+	BodyType         string
+	Client           HTTPClient
+	Error            error
+	ErrorOnBadStatus bool
+	URL              string
+	Response         *http.Response
 }
 
 type postFormCtx struct {
-	Client   *http.Client
-	Data     url.Values
-	Error    error
-	URL      string
-	Response *http.Response
+	Client           HTTPClient
+	Data             url.Values
+	Error            error
+	ErrorOnBadStatus bool
+	URL              string
+	Response         *http.Response
 }
 
 type BreakerLookupper interface {

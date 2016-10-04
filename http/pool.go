@@ -1,6 +1,10 @@
 package http
 
-import "sync"
+import (
+	"sync"
+
+	"github.com/pkg/errors"
+)
 
 var doCtxPool = sync.Pool{New: allocDoCtx}
 
@@ -10,11 +14,12 @@ func getDoCtx() *doCtx {
 }
 
 func allocDoCtx() interface{} {
-	return doCtx{}
+	return &doCtx{}
 }
 
 func releaseDoCtx(c *doCtx) {
 	c.Error = nil
+	c.ErrorOnBadStatus = false
 	c.Request = nil
 	c.Response = nil
 	doCtxPool.Put(c)
@@ -23,6 +28,9 @@ func releaseDoCtx(c *doCtx) {
 // Execute fulfills the Circuit interface
 func (c *doCtx) Execute() error {
 	c.Response, c.Error = c.Client.Do(c.Request)
+	if c.ErrorOnBadStatus && c.Response.StatusCode > 499 {
+		c.Error = errors.Wrapf(ErrBadStatus, "received bad status %d", c.Response.StatusCode)
+	}
 	return c.Error
 }
 
@@ -34,11 +42,12 @@ func getGetCtx() *getCtx {
 }
 
 func allocGetCtx() interface{} {
-	return getCtx{}
+	return &getCtx{}
 }
 
 func releaseGetCtx(c *getCtx) {
 	c.Error = nil
+	c.ErrorOnBadStatus = false
 	c.URL = ""
 	c.Response = nil
 	getCtxPool.Put(c)
@@ -47,6 +56,9 @@ func releaseGetCtx(c *getCtx) {
 // Execute fulfills the Circuit interface
 func (c *getCtx) Execute() error {
 	c.Response, c.Error = c.Client.Get(c.URL)
+	if c.ErrorOnBadStatus && c.Response.StatusCode > 499 {
+		c.Error = errors.Wrapf(ErrBadStatus, "received bad status %d", c.Response.StatusCode)
+	}
 	return c.Error
 }
 
@@ -58,11 +70,12 @@ func getHeadCtx() *headCtx {
 }
 
 func allocHeadCtx() interface{} {
-	return headCtx{}
+	return &headCtx{}
 }
 
 func releaseHeadCtx(c *headCtx) {
 	c.Error = nil
+	c.ErrorOnBadStatus = false
 	c.URL = ""
 	c.Response = nil
 	headCtxPool.Put(c)
@@ -71,6 +84,9 @@ func releaseHeadCtx(c *headCtx) {
 // Execute fulfills the Circuit interface
 func (c *headCtx) Execute() error {
 	c.Response, c.Error = c.Client.Head(c.URL)
+	if c.ErrorOnBadStatus && c.Response.StatusCode > 499 {
+		c.Error = errors.Wrapf(ErrBadStatus, "received bad status %d", c.Response.StatusCode)
+	}
 	return c.Error
 }
 
@@ -82,13 +98,14 @@ func getPostCtx() *postCtx {
 }
 
 func allocPostCtx() interface{} {
-	return postCtx{}
+	return &postCtx{}
 }
 
 func releasePostCtx(c *postCtx) {
 	c.Body = nil
 	c.BodyType = ""
 	c.Error = nil
+	c.ErrorOnBadStatus = false
 	c.URL = ""
 	c.Response = nil
 	postCtxPool.Put(c)
@@ -97,6 +114,9 @@ func releasePostCtx(c *postCtx) {
 // Execute fulfills the Circuit interface
 func (c *postCtx) Execute() error {
 	c.Response, c.Error = c.Client.Post(c.URL, c.BodyType, c.Body)
+	if c.ErrorOnBadStatus && c.Response.StatusCode > 499 {
+		c.Error = errors.Wrapf(ErrBadStatus, "received bad status %d", c.Response.StatusCode)
+	}
 	return c.Error
 }
 
@@ -108,11 +128,12 @@ func getPostFormCtx() *postFormCtx {
 }
 
 func allocPostFormCtx() interface{} {
-	return postFormCtx{}
+	return &postFormCtx{}
 }
 
 func releasePostFormCtx(c *postFormCtx) {
 	c.Error = nil
+	c.ErrorOnBadStatus = false
 	c.URL = ""
 	c.Response = nil
 	postFormCtxPool.Put(c)
@@ -121,9 +142,8 @@ func releasePostFormCtx(c *postFormCtx) {
 // Execute fulfills the Circuit interface
 func (c *postFormCtx) Execute() error {
 	c.Response, c.Error = c.Client.PostForm(c.URL, c.Data)
+	if c.ErrorOnBadStatus && c.Response.StatusCode > 499 {
+		c.Error = errors.Wrapf(ErrBadStatus, "received bad status %d", c.Response.StatusCode)
+	}
 	return c.Error
 }
-
-
-
-

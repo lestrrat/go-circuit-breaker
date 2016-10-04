@@ -8,12 +8,22 @@ import (
 	"github.com/lestrrat/go-circuit-breaker/breaker"
 )
 
-func New(l BreakerLookupper, options ...Option) *Client {
-	var cl *http.Client
+// NewClient creates a new HTTP Client where requests are controlled via
+// the provided circuit breaker(s). The mandatory argument `l` is an object
+// that provides the breaker to be used for the given request.
+//
+// Possible optional parameters:
+// * WithClient: specify the HTTP Client instance
+// * WithErrorOnBadStatus: specify if you want the breaker to consider 5XX status codes as errors
+func NewClient(l BreakerLookupper, options ...Option) *Client {
+	var cl HTTPClient
+	errOnBadStatus := true
 	for _, option := range options {
 		switch option.Name() {
 		case "Client":
-			cl = option.Get().(*http.Client)
+			cl = option.Get().(HTTPClient)
+		case "ErrorOnBadStatus":
+			errOnBadStatus = option.Get().(bool)
 		}
 	}
 	if cl == nil {
@@ -21,12 +31,11 @@ func New(l BreakerLookupper, options ...Option) *Client {
 	}
 
 	return &Client{
-		client: cl,
-		lookup: l,
+		client:         cl,
+		errOnBadStatus: errOnBadStatus,
+		lookup:         l,
 	}
 }
-
-var defaultBreakerName = "_default"
 
 // Do wraps http.Client Do()
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
@@ -39,8 +48,11 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	defer releaseDoCtx(ctx)
 
 	ctx.Client = c.client
+	ctx.ErrorOnBadStatus = c.errOnBadStatus
 	ctx.Request = req
-	breaker.Call(ctx, c.timeout)
+	if err := breaker.Call(ctx, c.timeout); err != nil {
+		return nil, err
+	}
 	return ctx.Response, ctx.Error
 }
 
@@ -55,8 +67,11 @@ func (c *Client) Get(url string) (*http.Response, error) {
 	defer releaseGetCtx(ctx)
 
 	ctx.Client = c.client
+	ctx.ErrorOnBadStatus = c.errOnBadStatus
 	ctx.URL = url
-	breaker.Call(ctx, c.timeout)
+	if err := breaker.Call(ctx, c.timeout); err != nil {
+		return nil, err
+	}
 	return ctx.Response, ctx.Error
 }
 
@@ -71,8 +86,11 @@ func (c *Client) Head(url string) (*http.Response, error) {
 	defer releaseHeadCtx(ctx)
 
 	ctx.Client = c.client
+	ctx.ErrorOnBadStatus = c.errOnBadStatus
 	ctx.URL = url
-	breaker.Call(ctx, c.timeout)
+	if err := breaker.Call(ctx, c.timeout); err != nil {
+		return nil, err
+	}
 	return ctx.Response, ctx.Error
 }
 
@@ -87,10 +105,13 @@ func (c *Client) Post(url string, bodyType string, body io.Reader) (*http.Respon
 	defer releasePostCtx(ctx)
 
 	ctx.Client = c.client
+	ctx.ErrorOnBadStatus = c.errOnBadStatus
 	ctx.URL = url
 	ctx.Body = body
 	ctx.BodyType = bodyType
-	breaker.Call(ctx, c.timeout)
+	if err := breaker.Call(ctx, c.timeout); err != nil {
+		return nil, err
+	}
 	return ctx.Response, ctx.Error
 }
 
@@ -105,15 +126,19 @@ func (c *Client) PostForm(url string, data url.Values) (*http.Response, error) {
 	defer releasePostFormCtx(ctx)
 
 	ctx.Client = c.client
+	ctx.ErrorOnBadStatus = c.errOnBadStatus
 	ctx.URL = url
 	ctx.Data = data
-	breaker.Call(ctx, c.timeout)
+	if err := breaker.Call(ctx, c.timeout); err != nil {
+		return nil, err
+	}
 	return ctx.Response, ctx.Error
 }
 
 func (c *Client) breakerLookup(val interface{}) *breaker.Breaker {
 	return c.lookup.BreakerLookup(val)
 }
+
 /*
 
 func (c *Client) runBreakerTripped() {
