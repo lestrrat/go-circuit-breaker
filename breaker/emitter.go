@@ -3,7 +3,6 @@ package breaker
 import (
 	"context"
 	"fmt"
-	"time"
 
 	pdebug "github.com/lestrrat/go-pdebug"
 )
@@ -35,8 +34,8 @@ func (e *eventEmitter) Break() {
 	e.breaker.Break()
 }
 
-func (e *eventEmitter) Call(c Circuit, d time.Duration) error {
-	return e.breaker.Call(c, d)
+func (e *eventEmitter) Call(c Circuit, options ...Option) error {
+	return e.breaker.Call(c, options...)
 }
 
 func (e *eventEmitter) ConsecFailures() int64 {
@@ -118,7 +117,7 @@ func (e *eventEmitter) Emit(ctx context.Context) {
 	}
 }
 
-// Subscribe starts a new subscription 
+// Subscribe starts a new subscription
 func (e *eventEmitter) Subscribe(ctx context.Context) *EventSubscription {
 	s := EventSubscription{
 		C:       make(chan Event),

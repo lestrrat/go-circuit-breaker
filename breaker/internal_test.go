@@ -154,7 +154,7 @@ func TestThresholdBreakerCalling(t *testing.T) {
 
 	cb := newBreaker(WithTripper(ThresholdTripper(2)))
 
-	err := cb.Call(circuit, 0) // First failure
+	err := cb.Call(circuit) // First failure
 	if err == nil {
 		t.Fatal("expected threshold breaker to error")
 	}
@@ -162,7 +162,7 @@ func TestThresholdBreakerCalling(t *testing.T) {
 		t.Fatal("expected threshold breaker to be open")
 	}
 
-	err = cb.Call(circuit, 0) // Second failure trips
+	err = cb.Call(circuit) // Second failure trips
 	if err == nil {
 		t.Fatal("expected threshold breaker to error")
 	}
@@ -193,14 +193,14 @@ func TestThresholdBreakerResets(t *testing.T) {
 	)
 
 	t.Logf("First call to circuit, should fail")
-	if !assert.Error(t, cb.Call(circuit, 0), "Expected cb to return an error") {
+	if !assert.Error(t, cb.Call(circuit), "Expected cb to return an error") {
 		return
 	}
 
 	c.Add(bo.NextBackOff() + time.Second)
 	for i := 0; i < 4; i++ {
 		t.Logf("Attempting subsequent call %d, should succeed", i)
-		if !assert.NoError(t, cb.Call(circuit, 0), "Expected cb to be successful (#%d)", i) {
+		if !assert.NoError(t, cb.Call(circuit), "Expected cb to be successful (#%d)", i) {
 			return
 		}
 
@@ -229,7 +229,7 @@ func TestTimeoutBreaker(t *testing.T) {
 	)
 
 	errc := make(chan error)
-	go func() { errc <- cb.Call(circuit, time.Millisecond) }()
+	go func() { errc <- cb.Call(circuit, WithTimeout(time.Millisecond)) }()
 
 	<-wait
 	c.Add(time.Millisecond * 3)
@@ -240,7 +240,7 @@ func TestTimeoutBreaker(t *testing.T) {
 		t.Fatal("expected timeout breaker to return an error")
 	}
 
-	go cb.Call(circuit, time.Millisecond)
+	go cb.Call(circuit, WithTimeout(time.Millisecond))
 	<-wait
 	c.Add(time.Millisecond * 3)
 	wait <- struct{}{}
@@ -298,7 +298,7 @@ func TestRateBreakerResets(t *testing.T) {
 	)
 	var err error
 	for i := 0; i < 4; i++ {
-		err = cb.Call(circuit, 0)
+		err = cb.Call(circuit)
 		if err == nil {
 			t.Fatal("Expected cb to return an error (closed breaker, service failure)")
 		} else if err != serviceError {
@@ -306,7 +306,7 @@ func TestRateBreakerResets(t *testing.T) {
 		}
 	}
 
-	err = cb.Call(circuit, 0)
+	err = cb.Call(circuit)
 	if err == nil {
 		t.Fatal("Expected cb to return an error (open breaker)")
 	} else if err != ErrBreakerOpen {
@@ -314,7 +314,7 @@ func TestRateBreakerResets(t *testing.T) {
 	}
 
 	c.Add(bo.NextBackOff() + time.Second)
-	err = cb.Call(circuit, 0)
+	err = cb.Call(circuit)
 	if err != nil {
 		t.Fatal("Expected cb to be successful")
 	}
@@ -334,7 +334,7 @@ func TestNeverRetryAfterBackoffStops(t *testing.T) {
 	cb.Call(CircuitFunc(func() error {
 		called = 1
 		return nil
-	}), 0)
+	}))
 
 	if called == 1 {
 		t.Fatal("Expected cb to never retry")

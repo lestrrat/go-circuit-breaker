@@ -85,7 +85,7 @@ type TripFunc func(Breaker) bool
 // failure and success counters and state information
 type Breaker interface {
 	Break()
-	Call(Circuit, time.Duration) error
+	Call(Circuit, ...Option) error
 	ConsecFailures() int64
 	ErrorRate() float64
 	Failures() int64
@@ -128,6 +128,7 @@ type breaker struct {
 	clock          Clock
 	consecFailures int64
 	counts         *window.Window
+	defaultTimeout time.Duration
 	halfOpens      int64
 	lastFailure    int64
 	nextBackOff    time.Duration

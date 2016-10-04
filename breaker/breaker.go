@@ -52,6 +52,8 @@ func New(options ...Option) *breaker {
 			b.clock = option.Get().(Clock)
 		case "Backoff":
 			b.backoff = option.Get().(backoff.BackOff)
+		case "Timeout":
+			b.defaultTimeout = option.Get().(time.Duration)
 		case "Tripper":
 			b.tripper = option.Get().(Tripper)
 		case "WindowTime":
@@ -213,12 +215,23 @@ func (cb *breaker) Ready() (isReady bool, st State) {
 }
 
 // Call wraps a function the Breaker will protect. A failure is recorded
-// whenever the function returns an error. If the called function takes longer
+// whenever the function returns an error.
+//
+// `WithTimeout` may be specified in the options to override the default
+// timeout associated with the breaker. If the called function takes longer
 // than timeout to run, a failure will be recorded.
-func (cb *breaker) Call(circuit Circuit, timeout time.Duration) (err error) {
+func (cb *breaker) Call(circuit Circuit, options ...Option) (err error) {
 	if pdebug.Enabled {
 		g := pdebug.Marker("Breaker.Call").BindError(&err)
 		defer g.End()
+	}
+
+	timeout := cb.defaultTimeout
+	for _, option := range options {
+		switch option.Name() {
+		case "Timeout":
+			timeout = option.Get().(time.Duration)
+		}
 	}
 
 	ready, st := cb.Ready()

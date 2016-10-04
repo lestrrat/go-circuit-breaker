@@ -1,6 +1,8 @@
 package breaker
 
 import (
+	"time"
+
 	"github.com/cenk/backoff"
 	"github.com/lestrrat/go-circuit-breaker/internal/option"
 )
@@ -22,4 +24,10 @@ func WithBackOff(v backoff.BackOff) Option {
 // determining when the breaker should trip.
 func WithTripper(v Tripper) Option {
 	return option.NewValue("Tripper", v)
+}
+
+// WithTimeout is used to specify the timeout used when `Call` is
+// executed.
+func WithTimeout(v time.Duration) Option {
+	return option.NewValue("Timeout", v)
 }
