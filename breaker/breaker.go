@@ -118,27 +118,7 @@ func (cb *breaker) Subscribe(ctx context.Context) <-chan BreakerEvent {
 		}
 	}()
 
-	cb.eventReceivers = append(cb.eventReceivers, eventReader)
 	return output
-}
-
-// AddListener adds a channel of ListenerEvents on behalf of a listener.
-// The listener channel must be buffered.
-func (cb *breaker) AddListener(listener chan ListenerEvent) {
-	cb.listeners = append(cb.listeners, listener)
-}
-
-// RemoveListener removes a channel previously added via AddListener.
-// Once removed, the channel will no longer receive ListenerEvents.
-// Returns true if the listener was found and removed.
-func (cb *breaker) RemoveListener(listener chan ListenerEvent) bool {
-	for i, receiver := range cb.listeners {
-		if listener == receiver {
-			cb.listeners = append(cb.listeners[:i], cb.listeners[i+1:]...)
-			return true
-		}
-	}
-	return false
 }
 
 // Trip will trip the circuit breaker. After Trip() is called, Tripped() will
@@ -165,7 +145,6 @@ func (cb *breaker) Reset() {
 	atomic.StoreInt32(&cb.tripped, 0)
 	atomic.StoreInt64(&cb.halfOpens, 0)
 	cb.ResetCounters()
-	cb.sendEvent(BreakerReset)
 }
 
 // ResetCounters will reset only the failures, consecFailures, and success counters
@@ -209,7 +188,6 @@ func (cb *breaker) fail() {
 	atomic.AddInt64(&cb.consecFailures, 1)
 	now := cb.clock.Now()
 	atomic.StoreInt64(&cb.lastFailure, now.Unix())
-	cb.sendEvent(BreakerFail)
 	if cb.tripper.Trip(cb) {
 		cb.Trip()
 	}
@@ -354,19 +332,4 @@ func (cb *breaker) State() state {
 		pdebug.Printf("returning open")
 	}
 	return open
-}
-
-func (cb *breaker) sendEvent(event BreakerEvent) {
-	for _, receiver := range cb.eventReceivers {
-		receiver <- event
-	}
-	for _, listener := range cb.listeners {
-		le := ListenerEvent{CB: cb, Event: event}
-		select {
-		case listener <- le:
-		default:
-			<-listener
-			listener <- le
-		}
-	}
 }

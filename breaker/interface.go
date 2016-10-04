@@ -49,12 +49,6 @@ const (
 	BreakerReady
 )
 
-// ListenerEvent includes a reference to the circuit breaker and the event.
-type ListenerEvent struct {
-	CB    Breaker
-	Event BreakerEvent
-}
-
 type state int
 
 const (
@@ -131,10 +125,8 @@ type breaker struct {
 	clock          Clock
 	consecFailures int64
 	counts         *window.Window
-	eventReceivers []chan BreakerEvent
 	halfOpens      int64
 	lastFailure    int64
-	listeners      []chan ListenerEvent
 	nextBackOff    time.Duration
 	tripper        Tripper
 	tripped        int32
