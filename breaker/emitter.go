@@ -15,16 +15,16 @@ func NewEventEmitter(cb Breaker) EventEmitter {
 	return &eventEmitter{
 		breaker:     cb,
 		emitting:    make(chan struct{}),
-		events:      make(chan BreakerEvent),
+		events:      make(chan Event),
 		subscribers: make(map[string]*EventSubscription),
 	}
 }
 
-func (e *eventEmitter) Events() chan BreakerEvent {
+func (e *eventEmitter) Events() chan Event {
 	return e.events
 }
 
-func emitEvent(e EventEmitter, ev BreakerEvent) {
+func emitEvent(e EventEmitter, ev Event) {
 	select {
 	case e.Events() <- ev:
 	default:
@@ -55,13 +55,13 @@ func (e *eventEmitter) Ready() (bool, State) {
 	r, st := e.breaker.Ready()
 	switch st {
 	case Halfopen:
-		defer emitEvent(e, BreakerReady)
+		defer emitEvent(e, ReadyEvent)
 	}
 	return r, st
 }
 
 func (e *eventEmitter) Reset() {
-	defer emitEvent(e, BreakerReset)
+	defer emitEvent(e, ResetEvent)
 	e.breaker.Reset()
 }
 
@@ -78,7 +78,7 @@ func (e *eventEmitter) Trip() {
 		g := pdebug.Marker("EventEmitter.Trip")
 		defer g.End()
 	}
-	defer emitEvent(e, BreakerTripped)
+	defer emitEvent(e, TrippedEvent)
 	e.breaker.Trip()
 }
 
@@ -121,7 +121,7 @@ func (e *eventEmitter) Emit(ctx context.Context) {
 // Subscribe starts a new subscription 
 func (e *eventEmitter) Subscribe(ctx context.Context) *EventSubscription {
 	s := EventSubscription{
-		C:       make(chan BreakerEvent),
+		C:       make(chan Event),
 		emitter: e,
 	}
 	e.mutex.Lock()

@@ -32,21 +32,21 @@ const (
 	DefaultWindowBuckets = 10
 )
 
-// BreakerEvent indicates the type of event received over an event channel
-type BreakerEvent int
+// Event indicates the type of event received over an event channel
+type Event int
 
 const (
-	// BreakerTripped is sent when a breaker trips
-	BreakerTripped BreakerEvent = iota + 1
+	// TrippedEvent is sent when a breaker trips
+	TrippedEvent Event = iota + 1
 
-	// BreakerReset is sent when a breaker resets
-	BreakerReset
+	// ResetEvent is sent when a breaker resets
+	ResetEvent
 
-	// BreakerFail is sent when Fail() is called
-	BreakerFail
+	// FailEvent is sent when Fail() is called
+	FailEvent
 
-	// BreakerReady is sent when the breaker enters the half open state and is ready to retry
-	BreakerReady
+	// ReadyEvent is sent when the breaker enters the half open state and is ready to retry
+	ReadyEvent
 )
 
 // State describes the current state of the Breaker
@@ -99,7 +99,7 @@ type Breaker interface {
 
 // EventSubscription describes a subscription to an EventEmitter
 type EventSubscription struct {
-	C       chan BreakerEvent
+	C       chan Event
 	emitter *eventEmitter
 }
 
@@ -109,14 +109,14 @@ type EventEmitter interface {
 	Breaker
 	Emitting() chan struct{}
 	Emit(context.Context)
-	Events() chan BreakerEvent
+	Events() chan Event
 	Subscribe(context.Context) *EventSubscription
 }
 
 type eventEmitter struct {
 	breaker     Breaker
 	emitting    chan struct{}
-	events      chan BreakerEvent
+	events      chan Event
 	mutex       sync.RWMutex
 	subscribers map[string]*EventSubscription
 }
@@ -135,7 +135,8 @@ type breaker struct {
 	tripped        int32
 }
 
-// Circuit is the interface for those things
+// Circuit is the interface for things that can be Call'ed
+// and protected by the Breaker
 type Circuit interface {
 	Execute() error
 }

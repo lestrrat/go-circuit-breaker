@@ -86,18 +86,18 @@ func TestBreakerEvents(t *testing.T) {
 	defer s.Stop()
 
 	cb.Trip()
-	if e := <-s.C; e != breaker.BreakerTripped {
+	if e := <-s.C; e != breaker.TrippedEvent {
 		t.Fatalf("expected to receive a trip event, got %d", e)
 	}
 
 	c.Add(bo.NextBackOff() + time.Second)
 	cb.Ready()
-	if e := <-s.C; e != breaker.BreakerReady {
+	if e := <-s.C; e != breaker.ReadyEvent {
 		t.Fatalf("expected to receive a breaker ready event, got %d", e)
 	}
 
 	cb.Reset()
-	if e := <-s.C; e != breaker.BreakerReset {
+	if e := <-s.C; e != breaker.ResetEvent {
 		t.Fatalf("expected to receive a reset event, got %d", e)
 	}
 }

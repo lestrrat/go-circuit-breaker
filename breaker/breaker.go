@@ -2,24 +2,23 @@
 // based on github.com/rubyist/circuitbreaker, with modifications to make
 // the API more Go-ish and some possible bug fixes.
 //
-// The Breaker will wrap a function call (typically one which uses remote 
+// The Breaker will wrap a function call (typically one which uses remote
 // services) and monitors for failures and/or time outs. When a threshold of
 // failures or time outs has been reached, future calls to the function will
 // not run. During this state, the breaker will periodically allow the function
 // to run and, if it is successful, will start running the function again.
 //
-// When wrapping blocks of code with a Breaker's Call() function, a time out 
+// When wrapping blocks of code with a Breaker's Call() function, a time out
 // can be specified. If the time out is reached, the breaker's Fail() function
 // will be called.
 //
 // Other types of circuit breakers can be easily built by creating a Breaker and
-// adding a custom Tripper. A Tripper is called when a Breaker Fail()s and 
+// adding a custom Tripper. A Tripper is called when a Breaker Fail()s and
 // receives the breaker as an argument. It then returns true or false to
 // indicate whether the breaker should trip.
 package breaker
 
 import (
-	"context"
 	"strconv"
 	"sync/atomic"
 	"time"
@@ -90,35 +89,6 @@ func New(options ...Option) *breaker {
 	b.nextBackOff = b.backoff.NextBackOff()
 	b.counts = window.New(b.clock, windowTime, windowBuckets)
 	return &b
-}
-
-// Subscribe returns a channel of BreakerEvents. Whenever the breaker changes state,
-// the state will be sent over the channel. See BreakerEvent for the types of events.
-func (cb *breaker) Subscribe(ctx context.Context) <-chan BreakerEvent {
-	eventReader := make(chan BreakerEvent)
-	output := make(chan BreakerEvent, 100)
-
-	go func() {
-		for {
-			select {
-			case <-ctx.Done():
-				return
-			case v, ok := <-eventReader:
-				if !ok {
-					return // something colossally wrong
-				}
-
-				select {
-				case output <- v:
-				default: // WTF is this doing?
-					<-output
-					output <- v
-				}
-			}
-		}
-	}()
-
-	return output
 }
 
 // Trip will trip the circuit breaker. After Trip() is called, Tripped() will
