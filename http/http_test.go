@@ -5,7 +5,10 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"testing"
+	"time"
 
+	"github.com/cenk/backoff"
+	"github.com/facebookgo/clock"
 	"github.com/lestrrat/go-circuit-breaker/breaker"
 	httpb "github.com/lestrrat/go-circuit-breaker/http"
 	"github.com/stretchr/testify/assert"
@@ -34,8 +37,15 @@ func TestTreshold(t *testing.T) {
 
 	u, _ := url.Parse(s.URL)
 
+	c := clock.NewMock()
+	bo := backoff.NewExponentialBackOff()
+	bo.InitialInterval = time.Second
+	bo.Clock = c
+
 	m := breaker.NewMap()
 	m.Set(u.Host, breaker.New(
+		breaker.WithClock(c),
+		breaker.WithBackOff(bo),
 		breaker.WithTripper(breaker.ThresholdTripper(1)),
 	))
 	l := httpb.NewPerHostLookup(m)
