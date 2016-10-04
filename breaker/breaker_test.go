@@ -1,10 +1,12 @@
 package breaker_test
 
 import (
+	"context"
 	"testing"
 	"time"
 
 	"github.com/cenk/backoff"
+	"github.com/facebookgo/clock"
 	"github.com/lestrrat/go-circuit-breaker/breaker"
 	"github.com/stretchr/testify/assert"
 )
@@ -17,7 +19,7 @@ func defaultBackOff(c breaker.Clock) backoff.BackOff {
 	return bo
 }
 
-func newBreaker(options ...breaker.Option) *breaker.Breaker {
+func newBreaker(options ...breaker.Option) breaker.Breaker {
 	var c breaker.Clock
 	var bo backoff.BackOff
 	for _, option := range options {
@@ -64,5 +66,38 @@ func TestErrorRate(t *testing.T) {
 	cb := newBreaker()
 	if er := cb.ErrorRate(); er != 0.0 {
 		t.Fatalf("expected breaker with no samples to have 0 error rate, got %f", er)
+	}
+}
+
+func TestBreakerEvents(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	c := clock.NewMock()
+	bo := defaultBackOff(c)
+	cb := breaker.NewEventEmitter(newBreaker(
+		breaker.WithBackOff(bo),
+		breaker.WithClock(c),
+	))
+	go cb.Emit(ctx)
+	<-cb.Emitting()
+
+	s := cb.Subscribe(ctx)
+	defer s.Stop()
+
+	cb.Trip()
+	if e := <-s.C; e != breaker.BreakerTripped {
+		t.Fatalf("expected to receive a trip event, got %d", e)
+	}
+
+	c.Add(bo.NextBackOff() + time.Second)
+	cb.Ready()
+	if e := <-s.C; e != breaker.BreakerReady {
+		t.Fatalf("expected to receive a breaker ready event, got %d", e)
+	}
+
+	cb.Reset()
+	if e := <-s.C; e != breaker.BreakerReset {
+		t.Fatalf("expected to receive a reset event, got %d", e)
 	}
 }

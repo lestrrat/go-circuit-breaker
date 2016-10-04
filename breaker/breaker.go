@@ -42,8 +42,8 @@ func (s state) String() string {
 }
 
 // New creates a base breaker with a specified backoff, clock and TripFunc
-func New(options ...Option) *Breaker {
-	var b Breaker
+func New(options ...Option) *breaker {
+	var b breaker
 	var windowTime time.Duration
 	var windowBuckets int
 
@@ -94,7 +94,7 @@ func New(options ...Option) *Breaker {
 
 // Subscribe returns a channel of BreakerEvents. Whenever the breaker changes state,
 // the state will be sent over the channel. See BreakerEvent for the types of events.
-func (cb *Breaker) Subscribe(ctx context.Context) <-chan BreakerEvent {
+func (cb *breaker) Subscribe(ctx context.Context) <-chan BreakerEvent {
 	eventReader := make(chan BreakerEvent)
 	output := make(chan BreakerEvent, 100)
 
@@ -124,14 +124,14 @@ func (cb *Breaker) Subscribe(ctx context.Context) <-chan BreakerEvent {
 
 // AddListener adds a channel of ListenerEvents on behalf of a listener.
 // The listener channel must be buffered.
-func (cb *Breaker) AddListener(listener chan ListenerEvent) {
+func (cb *breaker) AddListener(listener chan ListenerEvent) {
 	cb.listeners = append(cb.listeners, listener)
 }
 
 // RemoveListener removes a channel previously added via AddListener.
 // Once removed, the channel will no longer receive ListenerEvents.
 // Returns true if the listener was found and removed.
-func (cb *Breaker) RemoveListener(listener chan ListenerEvent) bool {
+func (cb *breaker) RemoveListener(listener chan ListenerEvent) bool {
 	for i, receiver := range cb.listeners {
 		if listener == receiver {
 			cb.listeners = append(cb.listeners[:i], cb.listeners[i+1:]...)
@@ -143,7 +143,7 @@ func (cb *Breaker) RemoveListener(listener chan ListenerEvent) bool {
 
 // Trip will trip the circuit breaker. After Trip() is called, Tripped() will
 // return true.
-func (cb *Breaker) Trip() {
+func (cb *breaker) Trip() {
 	if pdebug.Enabled {
 		g := pdebug.Marker("Breaker.Trip")
 		defer g.End()
@@ -151,12 +151,11 @@ func (cb *Breaker) Trip() {
 	atomic.StoreInt32(&cb.tripped, 1)
 	now := cb.clock.Now()
 	atomic.StoreInt64(&cb.lastFailure, now.Unix())
-	cb.sendEvent(BreakerTripped)
 }
 
 // Reset will reset the circuit breaker. After Reset() is called, Tripped() will
 // return false.
-func (cb *Breaker) Reset() {
+func (cb *breaker) Reset() {
 	if pdebug.Enabled {
 		g := pdebug.Marker("Breaker.Reset")
 		defer g.End()
@@ -170,42 +169,42 @@ func (cb *Breaker) Reset() {
 }
 
 // ResetCounters will reset only the failures, consecFailures, and success counters
-func (cb *Breaker) ResetCounters() {
+func (cb *breaker) ResetCounters() {
 	atomic.StoreInt64(&cb.consecFailures, 0)
 	cb.counts.Reset()
 }
 
 // Tripped returns true if the circuit breaker is tripped, false if it is reset.
-func (cb *Breaker) Tripped() bool {
+func (cb *breaker) Tripped() bool {
 	return atomic.LoadInt32(&cb.tripped) == 1
 }
 
 // Break trips the circuit breaker and prevents it from auto resetting. Use this when
 // manual control over the circuit breaker state is needed.
-func (cb *Breaker) Break() {
+func (cb *breaker) Break() {
 	atomic.StoreInt32(&cb.broken, 1)
 	cb.Trip()
 }
 
 // Failures returns the number of failures for this circuit breaker.
-func (cb *Breaker) Failures() int64 {
+func (cb *breaker) Failures() int64 {
 	return cb.counts.Failures()
 }
 
 // ConsecFailures returns the number of consecutive failures that have occured.
-func (cb *Breaker) ConsecFailures() int64 {
+func (cb *breaker) ConsecFailures() int64 {
 	return atomic.LoadInt64(&cb.consecFailures)
 }
 
 // Successes returns the number of successes for this circuit breaker.
-func (cb *Breaker) Successes() int64 {
+func (cb *breaker) Successes() int64 {
 	return cb.counts.Successes()
 }
 
 // fail is used to indicate a failure condition the Breaker should record. It will
 // increment the failure counters and store the time of the last failure. If the
 // breaker has a TripFunc it will be called, tripping the breaker if necessary.
-func (cb *Breaker) fail() {
+func (cb *breaker) fail() {
 	cb.counts.Fail()
 	atomic.AddInt64(&cb.consecFailures, 1)
 	now := cb.clock.Now()
@@ -218,7 +217,7 @@ func (cb *Breaker) fail() {
 
 // success is used to indicate a success condition the Breaker should record. If
 // the success was triggered by a retry attempt, the breaker will be Reset().
-func (cb *Breaker) success(st state) {
+func (cb *breaker) success(st state) {
 	cb.backoffLock.Lock()
 	cb.backoff.Reset()
 	cb.nextBackOff = cb.backoff.NextBackOff()
@@ -236,47 +235,46 @@ func (cb *Breaker) success(st state) {
 
 // ErrorRate returns the current error rate of the Breaker, expressed as a floating
 // point number (e.g. 0.9 for 90%), since the last time the breaker was Reset.
-func (cb *Breaker) ErrorRate() float64 {
+func (cb *breaker) ErrorRate() float64 {
 	return cb.counts.ErrorRate()
 }
 
 // Ready will return true if the circuit breaker is ready to call the function.
+//
 // It will be ready if the breaker is in a reset state, or if it is time to retry
-// the call for auto resetting.
-func (cb *Breaker) Ready() bool {
+// the call for auto resetting. Note that this means that the method has
+// side effects. If you are only interested in querying for the current state,
+// you should use State()
+func (cb *breaker) Ready() (isReady bool, st state) {
 	if pdebug.Enabled {
 		g := pdebug.Marker("Breaker.Ready")
 		defer g.End()
 	}
-	return cb.state().ready(cb)
-}
-
-func (s state) ready(cb *Breaker) bool {
-	switch s {
+	st = cb.State()
+	switch st {
 	case halfopen:
 		if pdebug.Enabled {
 			pdebug.Printf("state is halfopen")
 		}
 		atomic.StoreInt64(&cb.halfOpens, 0)
-		cb.sendEvent(BreakerReady)
 		fallthrough
 	case closed:
-		return true
+		return true, st
 	}
-	return false
+	return false, st
 }
 
 // Call wraps a function the Breaker will protect. A failure is recorded
 // whenever the function returns an error. If the called function takes longer
 // than timeout to run, a failure will be recorded.
-func (cb *Breaker) Call(circuit Circuit, timeout time.Duration) (err error) {
+func (cb *breaker) Call(circuit Circuit, timeout time.Duration) (err error) {
 	if pdebug.Enabled {
 		g := pdebug.Marker("Breaker.Call").BindError(&err)
 		defer g.End()
 	}
 
-	state := cb.state()
-	if !state.ready(cb) {
+	ready, st := cb.Ready()
+	if !ready {
 		if pdebug.Enabled {
 			pdebug.Printf("Breaker not ready")
 		}
@@ -310,7 +308,7 @@ func (cb *Breaker) Call(circuit Circuit, timeout time.Duration) (err error) {
 
 	switch err {
 	case nil:
-		cb.success(state)
+		cb.success(st)
 	default:
 		cb.fail()
 	}
@@ -318,11 +316,11 @@ func (cb *Breaker) Call(circuit Circuit, timeout time.Duration) (err error) {
 	return err
 }
 
-// state returns the state of the TrippableBreaker. The states available are:
+// State returns the state of the TrippableBreaker. The states available are:
 // closed - the circuit is in a reset state and is operational
 // open - the circuit is in a tripped state
 // halfopen - the circuit is in a tripped state but the reset timeout has passed
-func (cb *Breaker) state() state {
+func (cb *breaker) State() state {
 	if tripped := cb.Tripped(); !tripped {
 		return closed
 	}
@@ -358,7 +356,7 @@ func (cb *Breaker) state() state {
 	return open
 }
 
-func (cb *Breaker) sendEvent(event BreakerEvent) {
+func (cb *breaker) sendEvent(event BreakerEvent) {
 	for _, receiver := range cb.eventReceivers {
 		receiver <- event
 	}

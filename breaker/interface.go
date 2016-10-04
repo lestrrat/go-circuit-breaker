@@ -1,6 +1,7 @@
 package breaker
 
 import (
+	"context"
 	"errors"
 	"sync"
 	"time"
@@ -50,7 +51,7 @@ const (
 
 // ListenerEvent includes a reference to the circuit breaker and the event.
 type ListenerEvent struct {
-	CB    *Breaker
+	CB    Breaker
 	Event BreakerEvent
 }
 
@@ -78,15 +79,52 @@ var (
 // no Tripper
 type Tripper interface {
 	// Trip will receive the Breaker as an argument and returns a boolean.
-	Trip(*Breaker) bool
+	Trip(Breaker) bool
 }
 
 // TripFunc is a type of Tripper that is represented by a function with no state
-type TripFunc func(*Breaker) bool
+type TripFunc func(Breaker) bool
 
 // Breaker is the base of a circuit breaker. It maintains failure and success
 // counters as well as the event subscribers.
-type Breaker struct {
+type Breaker interface {
+	Break()
+	Call(Circuit, time.Duration) error
+	ConsecFailures() int64
+	ErrorRate() float64
+	Failures() int64
+	Ready() (bool, state)
+	Reset()
+	State() state
+	Successes() int64
+	Trip()
+	Tripped() bool
+}
+
+type EventSubscriber struct {
+	C       chan BreakerEvent
+	emitter *eventEmitter
+}
+
+// EventEmitter is used to wrap a Breaker object so that useful
+// notifications can be received from it.
+type EventEmitter interface {
+	Breaker
+	Emitting() chan struct{}
+	Emit(context.Context)
+	Events() chan BreakerEvent
+	Subscribe(context.Context) *EventSubscriber
+}
+
+type eventEmitter struct {
+	breaker     Breaker
+	emitting    chan struct{}
+	events      chan BreakerEvent
+	mutex       sync.RWMutex
+	subscribers map[string]*EventSubscriber
+}
+
+type breaker struct {
 	backoff        backoff.BackOff
 	backoffLock    sync.Mutex
 	broken         int32
@@ -123,6 +161,6 @@ type Map interface {
 }
 
 type simpleMap struct {
-	mutex sync.RWMutex
+	mutex    sync.RWMutex
 	breakers map[string]*Breaker
 }
