@@ -33,7 +33,7 @@ func newBreaker(options ...Option) *Breaker {
 	}
 
 	if c == nil {
-		c = SimpleClock()
+		c = SystemClock
 		options = append(options, WithClock(c))
 	}
 

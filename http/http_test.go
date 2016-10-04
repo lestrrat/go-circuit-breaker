@@ -47,9 +47,9 @@ func TestTreshold(t *testing.T) {
 	t.Logf("%#v", res)
 
 	res, err = cl.Get(s.URL + "?fail=true")
-		if !assert.Error(t, err, "Get should fail") {
-			return
-		}
+	if !assert.Error(t, err, "Get should fail") {
+		return
+	}
 	for i := 0; i < 10; i++ {
 		res, err = cl.Get(s.URL)
 		if !assert.Error(t, err, "Get should fail") {

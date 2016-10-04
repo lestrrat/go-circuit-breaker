@@ -67,7 +67,7 @@ func New(options ...Option) *Breaker {
 	}
 
 	if b.clock == nil {
-		b.clock = SimpleClock()
+		b.clock = SystemClock
 	}
 
 	if b.backoff == nil {

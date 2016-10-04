@@ -18,9 +18,14 @@ type Clock interface {
 	Now() time.Time
 }
 
+type systemClock struct{}
+
+// SystemClock is a simple clock using the time package
+var SystemClock = systemClock{}
+
 const (
 	// DefaultWindowTime is the default time the window covers, 10 seconds.
-	DefaultWindowTime time.Duration = time.Millisecond * 10000
+	DefaultWindowTime time.Duration = time.Second * 10
 
 	// DefaultWindowBuckets is the default number of buckets the window holds, 10.
 	DefaultWindowBuckets = 10

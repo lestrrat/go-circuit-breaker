@@ -30,7 +30,7 @@ func newBreaker(options ...breaker.Option) *breaker.Breaker {
 	}
 
 	if c == nil {
-		c = breaker.SimpleClock()
+		c = breaker.SystemClock
 		options = append(options, breaker.WithClock(c))
 	}
 
