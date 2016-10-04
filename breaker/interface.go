@@ -116,6 +116,7 @@ type Option interface {
 	Get() interface{}
 }
 
+// Map represents a map of breakers
 type Map interface {
 	Get(string) (*Breaker, bool)
 	Set(string, *Breaker)

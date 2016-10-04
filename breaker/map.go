@@ -1,5 +1,6 @@
 package breaker
 
+// NewMap creates a default breaker map
 func NewMap() Map {
 	return &simpleMap{
 		breakers: make(map[string]*Breaker),
