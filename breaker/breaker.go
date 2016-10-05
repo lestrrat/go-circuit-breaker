@@ -93,133 +93,11 @@ func New(options ...Option) *breaker {
 	return &b
 }
 
-// Trip will trip the circuit breaker. After Trip() is called, Tripped() will
-// return true.
-func (cb *breaker) Trip() {
-	if pdebug.Enabled {
-		g := pdebug.Marker("Breaker.Trip")
-		defer g.End()
-	}
-	atomic.StoreInt32(&cb.tripped, 1)
-	now := cb.clock.Now()
-	atomic.StoreInt64(&cb.lastFailure, now.Unix())
-}
-
-// Reset will reset the circuit breaker. After Reset() is called, Tripped() will
-// return false.
-func (cb *breaker) Reset() {
-	if pdebug.Enabled {
-		g := pdebug.Marker("Breaker.Reset")
-		defer g.End()
-	}
-
-	atomic.StoreInt32(&cb.broken, 0)
-	atomic.StoreInt32(&cb.tripped, 0)
-	atomic.StoreInt64(&cb.halfOpens, 0)
-	cb.ResetCounters()
-}
-
-// ResetCounters will reset only the failures, consecFailures, and success counters
-func (cb *breaker) ResetCounters() {
-	atomic.StoreInt64(&cb.consecFailures, 0)
-	cb.counts.Reset()
-}
-
-// Tripped returns true if the circuit breaker is tripped, false if it is reset.
-func (cb *breaker) Tripped() bool {
-	return atomic.LoadInt32(&cb.tripped) == 1
-}
-
-// Break trips the circuit breaker and prevents it from auto resetting. Use this when
-// manual control over the circuit breaker state is needed.
 func (cb *breaker) Break() {
 	atomic.StoreInt32(&cb.broken, 1)
 	cb.Trip()
 }
 
-// Failures returns the number of failures for this circuit breaker.
-func (cb *breaker) Failures() int64 {
-	return cb.counts.Failures()
-}
-
-// ConsecFailures returns the number of consecutive failures that have occured.
-func (cb *breaker) ConsecFailures() int64 {
-	return atomic.LoadInt64(&cb.consecFailures)
-}
-
-// Successes returns the number of successes for this circuit breaker.
-func (cb *breaker) Successes() int64 {
-	return cb.counts.Successes()
-}
-
-// fail is used to indicate a failure condition the Breaker should record. It will
-// increment the failure counters and store the time of the last failure. If the
-// breaker has a TripFunc it will be called, tripping the breaker if necessary.
-func (cb *breaker) fail() {
-	cb.counts.Fail()
-	atomic.AddInt64(&cb.consecFailures, 1)
-	now := cb.clock.Now()
-	atomic.StoreInt64(&cb.lastFailure, now.Unix())
-	if cb.tripper.Trip(cb) {
-		cb.Trip()
-	}
-}
-
-// success is used to indicate a success condition the Breaker should record. If
-// the success was triggered by a retry attempt, the breaker will be Reset().
-func (cb *breaker) success(st State) {
-	cb.backoffLock.Lock()
-	cb.backoff.Reset()
-	cb.nextBackOff = cb.backoff.NextBackOff()
-	cb.backoffLock.Unlock()
-
-	if st == Halfopen {
-		if pdebug.Enabled {
-			pdebug.Printf("Breaker is in halfopen state, calling Reset")
-		}
-		cb.Reset()
-	}
-	atomic.StoreInt64(&cb.consecFailures, 0)
-	cb.counts.Success()
-}
-
-// ErrorRate returns the current error rate of the Breaker, expressed as a floating
-// point number (e.g. 0.9 for 90%), since the last time the breaker was Reset.
-func (cb *breaker) ErrorRate() float64 {
-	return cb.counts.ErrorRate()
-}
-
-// Ready will return true if the circuit breaker is ready to call the function.
-//
-// It will be ready if the breaker is in a reset state, or if it is time to retry
-// the call for auto resetting. Note that this means that the method has
-// side effects. If you are only interested in querying for the current state,
-// you should use State()
-func (cb *breaker) Ready() (isReady bool, st State) {
-	if pdebug.Enabled {
-		g := pdebug.Marker("Breaker.Ready")
-		defer g.End()
-	}
-	st = cb.State()
-	switch st {
-	case Halfopen:
-		if pdebug.Enabled {
-			pdebug.Printf("state is halfopen")
-		}
-		atomic.StoreInt64(&cb.halfOpens, 0)
-		fallthrough
-	case Closed:
-		return true, st
-	}
-	return false, st
-}
-
-// Call wraps a function the Breaker will protect. A failure is recorded
-// whenever the function returns an error.
-//
-// `WithTimeout` may be specified in the options to override the default
-// timeout associated with the breaker. If the called function takes longer
-// than timeout to run, a failure will be recorded.
 func (cb *breaker) Call(circuit Circuit, options ...Option) (err error) {
 	if pdebug.Enabled {
 		g := pdebug.Marker("Breaker.Call").BindError(&err)
@@ -277,10 +155,54 @@ func (cb *breaker) Call(circuit Circuit, options ...Option) (err error) {
 	return err
 }
 
-// State returns the state of the TrippableBreaker. The states available are:
-// closed - the circuit is in a reset state and is operational
-// open - the circuit is in a tripped state
-// halfopen - the circuit is in a tripped state but the reset timeout has passed
+func (cb *breaker) ConsecFailures() int64 {
+	return atomic.LoadInt64(&cb.consecFailures)
+}
+
+func (cb *breaker) ErrorRate() float64 {
+	return cb.counts.ErrorRate()
+}
+
+func (cb *breaker) Failures() int64 {
+	return cb.counts.Failures()
+}
+
+func (cb *breaker) Ready() (isReady bool, st State) {
+	if pdebug.Enabled {
+		g := pdebug.Marker("Breaker.Ready")
+		defer g.End()
+	}
+	st = cb.State()
+	switch st {
+	case Halfopen:
+		if pdebug.Enabled {
+			pdebug.Printf("state is halfopen")
+		}
+		atomic.StoreInt64(&cb.halfOpens, 0)
+		fallthrough
+	case Closed:
+		return true, st
+	}
+	return false, st
+}
+
+func (cb *breaker) Reset() {
+	if pdebug.Enabled {
+		g := pdebug.Marker("Breaker.Reset")
+		defer g.End()
+	}
+
+	atomic.StoreInt32(&cb.broken, 0)
+	atomic.StoreInt32(&cb.tripped, 0)
+	atomic.StoreInt64(&cb.halfOpens, 0)
+	cb.ResetCounters()
+}
+
+func (cb *breaker) ResetCounters() {
+	atomic.StoreInt64(&cb.consecFailures, 0)
+	cb.counts.Reset()
+}
+
 func (cb *breaker) State() State {
 	if tripped := cb.Tripped(); !tripped {
 		return Closed
@@ -315,4 +237,53 @@ func (cb *breaker) State() State {
 		pdebug.Printf("returning open")
 	}
 	return Open
+}
+func (cb *breaker) Successes() int64 {
+	return cb.counts.Successes()
+}
+
+func (cb *breaker) Trip() {
+	if pdebug.Enabled {
+		g := pdebug.Marker("Breaker.Trip")
+		defer g.End()
+	}
+	atomic.StoreInt32(&cb.tripped, 1)
+	now := cb.clock.Now()
+	atomic.StoreInt64(&cb.lastFailure, now.Unix())
+}
+
+func (cb *breaker) Tripped() bool {
+	return atomic.LoadInt32(&cb.tripped) == 1
+}
+
+// fail is used to indicate a failure condition the Breaker should record.
+// It will increment the failure counters and store the time of the last
+// failure. If the breaker has a TripFunc it will be called, tripping the
+// breaker if necessary.
+func (cb *breaker) fail() {
+	cb.counts.Fail()
+	atomic.AddInt64(&cb.consecFailures, 1)
+	now := cb.clock.Now()
+	atomic.StoreInt64(&cb.lastFailure, now.Unix())
+	if cb.tripper.Trip(cb) {
+		cb.Trip()
+	}
+}
+
+// success is used to indicate a success condition the Breaker should record.
+// If the success was triggered by a retry attempt, the breaker will be Reset().
+func (cb *breaker) success(st State) {
+	cb.backoffLock.Lock()
+	cb.backoff.Reset()
+	cb.nextBackOff = cb.backoff.NextBackOff()
+	cb.backoffLock.Unlock()
+
+	if st == Halfopen {
+		if pdebug.Enabled {
+			pdebug.Printf("Breaker is in halfopen state, calling Reset")
+		}
+		cb.Reset()
+	}
+	atomic.StoreInt64(&cb.consecFailures, 0)
+	cb.counts.Success()
 }

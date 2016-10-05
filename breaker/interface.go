@@ -84,16 +84,62 @@ type TripFunc func(Breaker) bool
 // Breaker describes the interface of a circuit breaker. It maintains
 // failure and success counters and state information
 type Breaker interface {
+	// Break trips the circuit breaker and prevents it from auto resetting.
+	// Use this when manual control over the circuit breaker state is needed.
 	Break()
+
+	// Call wraps a function the Breaker will protect. A failure is recorded
+	// whenever the function returns an error.
+	//
+	// `WithTimeout` may be specified in the options to override the default
+	// timeout associated with the breaker. If the called function takes longer
+	// than timeout to run, a failure will be recorded.
 	Call(Circuit, ...Option) error
+
+	// ConsecFailures returns the number of consecutive failures that
+	// have occured.
 	ConsecFailures() int64
+
+	// ErrorRate returns the current error rate of the Breaker, expressed
+	// as a floating point number (e.g. 0.9 for 90%), since the last time
+	// the breaker was Reset.
 	ErrorRate() float64
+
+	// Failures returns the number of failures for this circuit breaker.
 	Failures() int64
+
+	// Ready will return true if the circuit breaker is ready to call the
+	// function. It will be ready if the breaker is in a reset state, or if
+	// it is time to retry the call for auto resetting.
+	//
+	// Note that the method has side effects. If you are only interested in
+	// querying for the current state without causing side effects,
+	// you should use State()
 	Ready() (bool, State)
+
+	// Reset will reset the circuit breaker. After Reset() is called,
+	// Tripped() will return false.
 	Reset()
+
+	// ResetCounters will reset only the failures, consecFailures,
+	// and success counters
+	ResetCounters()
+
+	// State returns the state of the Breaker. The states available are:
+	// Closed - the circuit is in a reset state and is operational
+	// Open - the circuit is in a tripped state
+	// Halfopen - the circuit is in a tripped state but the reset timeout has passed
 	State() State
+
+	// Successes returns the number of successes for this circuit breaker.
 	Successes() int64
+
+	// Trip will trip the circuit breaker. After Trip() is called, Tripped()
+	// willreturn true.
 	Trip()
+
+	// Tripped returns true if the circuit breaker is tripped, false
+	// if it is reset.
 	Tripped() bool
 }
 

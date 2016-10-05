@@ -64,6 +64,10 @@ func (e *eventEmitter) Reset() {
 	e.breaker.Reset()
 }
 
+func (e *eventEmitter) ResetCounters() {
+	e.breaker.ResetCounters()
+}
+
 func (e *eventEmitter) State() State {
 	return e.breaker.State()
 }
