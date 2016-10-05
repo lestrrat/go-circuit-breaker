@@ -39,8 +39,8 @@ func NewClient(l BreakerLookupper, options ...Option) *Client {
 
 // Do wraps http.Client Do()
 func (c *Client) Do(req *http.Request) (*http.Response, error) {
-	breaker := c.breakerLookup(req.URL.String())
-	if breaker == nil {
+	b := c.breakerLookup(req.URL.String())
+	if b == nil {
 		return c.client.Do(req)
 	}
 
@@ -50,7 +50,7 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 	ctx.Client = c.client
 	ctx.ErrorOnBadStatus = c.errOnBadStatus
 	ctx.Request = req
-	if err := breaker.Call(ctx, c.timeout); err != nil {
+	if err := b.Call(ctx, breaker.WithTimeout(c.timeout)); err != nil {
 		return nil, err
 	}
 	return ctx.Response, ctx.Error
@@ -58,8 +58,8 @@ func (c *Client) Do(req *http.Request) (*http.Response, error) {
 
 // Get wraps http.Client Get()
 func (c *Client) Get(url string) (*http.Response, error) {
-	breaker := c.breakerLookup(url)
-	if breaker == nil {
+	b := c.breakerLookup(url)
+	if b == nil {
 		return c.client.Get(url)
 	}
 
@@ -69,7 +69,7 @@ func (c *Client) Get(url string) (*http.Response, error) {
 	ctx.Client = c.client
 	ctx.ErrorOnBadStatus = c.errOnBadStatus
 	ctx.URL = url
-	if err := breaker.Call(ctx, c.timeout); err != nil {
+	if err := b.Call(ctx, breaker.WithTimeout(c.timeout)); err != nil {
 		return nil, err
 	}
 	return ctx.Response, ctx.Error
@@ -77,8 +77,8 @@ func (c *Client) Get(url string) (*http.Response, error) {
 
 // Head wraps http.Client Head()
 func (c *Client) Head(url string) (*http.Response, error) {
-	breaker := c.breakerLookup(url)
-	if breaker == nil {
+	b := c.breakerLookup(url)
+	if b == nil {
 		return c.client.Head(url)
 	}
 
@@ -88,7 +88,7 @@ func (c *Client) Head(url string) (*http.Response, error) {
 	ctx.Client = c.client
 	ctx.ErrorOnBadStatus = c.errOnBadStatus
 	ctx.URL = url
-	if err := breaker.Call(ctx, c.timeout); err != nil {
+	if err := b.Call(ctx, breaker.WithTimeout(c.timeout)); err != nil {
 		return nil, err
 	}
 	return ctx.Response, ctx.Error
@@ -96,8 +96,8 @@ func (c *Client) Head(url string) (*http.Response, error) {
 
 // Post wraps http.Client Post()
 func (c *Client) Post(url string, bodyType string, body io.Reader) (*http.Response, error) {
-	breaker := c.breakerLookup(url)
-	if breaker == nil {
+	b := c.breakerLookup(url)
+	if b == nil {
 		return c.client.Head(url)
 	}
 
@@ -109,7 +109,7 @@ func (c *Client) Post(url string, bodyType string, body io.Reader) (*http.Respon
 	ctx.URL = url
 	ctx.Body = body
 	ctx.BodyType = bodyType
-	if err := breaker.Call(ctx, c.timeout); err != nil {
+	if err := b.Call(ctx, breaker.WithTimeout(c.timeout)); err != nil {
 		return nil, err
 	}
 	return ctx.Response, ctx.Error
@@ -117,8 +117,8 @@ func (c *Client) Post(url string, bodyType string, body io.Reader) (*http.Respon
 
 // PostForm wraps http.Client PostForm()
 func (c *Client) PostForm(url string, data url.Values) (*http.Response, error) {
-	breaker := c.breakerLookup(url)
-	if breaker == nil {
+	b := c.breakerLookup(url)
+	if b == nil {
 		return c.client.PostForm(url, data)
 	}
 
@@ -129,7 +129,7 @@ func (c *Client) PostForm(url string, data url.Values) (*http.Response, error) {
 	ctx.ErrorOnBadStatus = c.errOnBadStatus
 	ctx.URL = url
 	ctx.Data = data
-	if err := breaker.Call(ctx, c.timeout); err != nil {
+	if err := b.Call(ctx, breaker.WithTimeout(c.timeout)); err != nil {
 		return nil, err
 	}
 	return ctx.Response, ctx.Error
