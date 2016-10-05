@@ -34,6 +34,8 @@ func Example() {
 }
 
 func ExampleEventEmitter() {
+	// Use emitter to receive notifications of events
+	// such as TrippedEvent, ReadyEvent, ResetEvent, etc.
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 

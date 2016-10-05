@@ -9,31 +9,70 @@ Circuit Breaker Pattern for Go
 # SYNOPSIS
 
 ```go
-import "github.com/lestrrat/go-circuit-breaker/breaker"
+package breaker_test
 
-func main() {
-  b := breaker.New(
-    breaker.WithTripper(breaker.ThresholdTripper(10)),
-  )
+import (
+	"context"
+	"time"
 
-  err := b.Call(breaker.CircuitFunc(func() error {
-    ...
-  }))
-  if err != nil {
-    // either the `circuit` passed to Call() failed
-    // or the call was made while the breaker was
-    // open/tripped.
-    ...
-  }
+	"github.com/cenk/backoff"
+	"github.com/lestrrat/go-circuit-breaker/breaker"
+)
+
+func Example() {
+	// Need to initialize a clock to use for the
+	// backoff AND the breaker
+	c := breaker.SystemClock
+
+	// Create a custom backoff strategy
+	bo := backoff.NewExponentialBackOff()
+	bo.Clock = c
+
+	cb := breaker.New(
+		breaker.WithBackOff(bo),
+		breaker.WithClock(c),
+		breaker.WithTimeout(10*time.Second),
+		breaker.WithTripper(breaker.ThresholdTripper(10)),
+	)
+
+	err := cb.Call(breaker.CircuitFunc(func() error {
+		// call that may trip the breaker
+		return nil
+	}))
+	// err will be non-nill if either the circuit returns
+	// an error, or the breaker is in an Open state
+	_ = err
+}
+
+func ExampleEventEmitter() {
+	// Use emitter to receive notifications of events
+	// such as TrippedEvent, ReadyEvent, ResetEvent, etc.
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	cb := breaker.NewEventEmitter(breaker.New())
+	s := cb.Subscribe(ctx)
+
+	for {
+		select {
+		case e := <-s.C:
+			// received event
+			_ = e
+		}
+	}
 }
 ```
 
 # DESCRIPTION
 
 This is a fork of https://github.com/rubyist/circuitbreaker.
+
 There were few issues (timing sensitive tests) and tweaks that I wanted to see
-(e.g. separating the event subscription from the core breaker), but they mostly
-required API changes, which is a very hard to thing to press for (and understandably so)
+(e.g. separating the event subscription from the core breaker, and ways to
+pass optional parameters), but they mostly
+required API changes, which is a very hard to thing to press for.
+
+So there it is. Yet another circuit breaker :) .
 
 # CONTRIBUTING
 
