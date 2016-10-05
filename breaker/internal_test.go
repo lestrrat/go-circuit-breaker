@@ -306,11 +306,8 @@ func TestRateBreakerResets(t *testing.T) {
 		}
 	}
 
-	err = cb.Call(circuit)
-	if err == nil {
-		t.Fatal("Expected cb to return an error (open breaker)")
-	} else if err != ErrBreakerOpen {
-		t.Fatal("Expected cb to return open open breaker error (open breaker)")
+	if !assert.True(t, IsOpen(cb.Call(circuit)), "Expected cb to return open open breaker error (open breaker)") {
+		return
 	}
 
 	c.Add(bo.NextBackOff() + time.Second)

@@ -26,6 +26,7 @@ import (
 	"github.com/cenk/backoff"
 	"github.com/lestrrat/go-circuit-breaker/breaker/internal/window"
 	pdebug "github.com/lestrrat/go-pdebug"
+	"github.com/pkg/errors"
 )
 
 func (s State) String() string {
@@ -117,7 +118,7 @@ func (cb *breaker) Call(circuit Circuit, options ...Option) (err error) {
 		if pdebug.Enabled {
 			pdebug.Printf("Breaker not ready")
 		}
-		return ErrBreakerOpen
+		return errors.Wrap(ErrBreakerOpen, "failed to execute circuit")
 	}
 
 	switch timeout {
@@ -141,7 +142,7 @@ func (cb *breaker) Call(circuit Circuit, options ...Option) (err error) {
 		select {
 		case err = <-c:
 		case <-cb.clock.After(timeout):
-			err = ErrBreakerTimeout
+			err = errors.Wrap(ErrBreakerTimeout, "timeout reached while executing circuit")
 		}
 	}
 

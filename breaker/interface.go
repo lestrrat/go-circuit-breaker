@@ -2,7 +2,6 @@ package breaker
 
 import (
 	"context"
-	"errors"
 	"sync"
 	"time"
 
@@ -66,8 +65,8 @@ var (
 
 // Error codes returned by Call
 var (
-	ErrBreakerOpen    = errors.New("breaker open")
-	ErrBreakerTimeout = errors.New("breaker time out")
+	ErrBreakerOpen    = breakerOpenErr{}
+	ErrBreakerTimeout = breakerTimeoutErr{}
 )
 
 // Tripper is an interface called by a Breaker's Fail() method. It should
