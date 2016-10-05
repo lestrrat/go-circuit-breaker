@@ -2,7 +2,7 @@
 // based on github.com/rubyist/circuitbreaker, with modifications to make
 // the API more Go-ish and some possible bug fixes.
 //
-// The Breaker will wrap a function call (typically one which uses remote
+// The Breaker will wrap a Circuit (typically one which uses remote
 // services) and monitors for failures and/or time outs. When a threshold of
 // failures or time outs has been reached, future calls to the function will
 // not run. During this state, the breaker will periodically allow the function
