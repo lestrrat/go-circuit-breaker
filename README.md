@@ -6,6 +6,10 @@ Circuit Breaker Pattern for Go
 
 [![GoDoc](https://godoc.org/github.com/lestrrat/go-circuit-breaker?status.svg)](https://godoc.org/github.com/lestrrat/go-circuit-breaker)
 
+# WARNING
+
+This repository has been moved to [github.com/lestrrat-go/circuit-breaker](https://github.com/lestrrat-go/circuit-breaker). This repository exists so that libraries pointing to this URL will keep functioning, but this repository will NOT be updated in the future. Please use the new import path.
+
 # SYNOPSIS
 
 ```go
